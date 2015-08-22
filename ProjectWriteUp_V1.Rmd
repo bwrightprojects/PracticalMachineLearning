@@ -1,0 +1,150 @@
+---
+title: "Practical Machine Learning Project - Quantified Self Movement Data Analysis"
+author: "BWright"
+date: "August 22, 2015"
+output: 
+    html_document:
+       fig_height: 9
+       fig_width: 9
+---
+## Introduction  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.  
+
+In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.  Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data Sources
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+For this project, the above data files have been downloaded to the data directory.
+
+## Data Preprocessing  
+```{r cache = T}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+### Download the Data
+```{r, cache = T}
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainCSVFile <- "./data/pml-training.csv"
+testCSVFile  <- "./data/pml-testing.csv"
+
+## create data dir if it doesn't exit
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(trainCSVFile)) {
+  download.file(trainUrl, destfile=trainCSVFile, method="curl")
+}
+if (!file.exists(testCSVFile)) {
+  download.file(testUrl, destfile=testCSVFile, method="curl")
+}
+```  
+### Load the Data
+Load the two csv data files into data frmes.  
+```{r, cache = T}
+trainCSVRaw <- read.csv("./data/pml-training.csv")
+testCSVRaw <- read.csv("./data/pml-testing.csv")
+dim(trainCSVRaw)
+dim(testCSVRaw)
+```
+The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. The "classe" variable in the training set is the outcome to predict. 
+
+### Clean the data
+Cleaning the data and removing observations with missing values. Also remove ome meaningless predictors.
+```{r, cache = T}
+sum(complete.cases(trainCSVRaw))
+```
+First, remove columns that contain NA missing values.
+```{r, cache = T}
+trainCSVRaw <- trainCSVRaw[, colSums(is.na(trainCSVRaw)) == 0] 
+testCSVRaw <- testCSVRaw[, colSums(is.na(testCSVRaw)) == 0] 
+```  
+Next, remove columns that do not contribute much to the accelerometer measurements.
+```{r, cache = T}
+classe <- trainCSVRaw$classe
+trainRemove <- grepl("^X|timestamp|window", names(trainCSVRaw))
+trainCSVRaw <- trainCSVRaw[, !trainRemove]
+trainCleaned <- trainCSVRaw[, sapply(trainCSVRaw, is.numeric)]
+trainCleaned$classe <- classe
+testRemove <- grepl("^X|timestamp|window", names(testCSVRaw))
+testCSVRaw <- testCSVRaw[, !testRemove]
+testCleaned <- testCSVRaw[, sapply(testCSVRaw, is.numeric)]
+```
+The **cleaned training data set** contains **19622 observations and 53 variables**. The **cleaned testing data set contains 20 observations and 53 variables**. The **"classe" variable** is still in the cleaned training set.
+
+### Slice the data
+The cleaned training data can be split into a pure ***training data set (70%)*** and a ***validation/test data set (30%)***. The validation/training data set will be used to conduct cross validation in future steps.  
+```{r, cache = T}
+##set.seed(22519) # For reproducibile purpose
+set.seed(082315) # For reproducibile purpose
+inTrain <- createDataPartition(trainCleaned$classe, p=0.70, list=F)
+trainData <- trainCleaned[inTrain, ]
+testData <- trainCleaned[-inTrain, ]
+```
+
+## Data Modeling
+Fit a predictive model for activity recognition using the **Random Forest** algorithm because it automatically selects important variables and is robust to correlated covariates & outliers in general. A **5-fold cross validation** will be used when applying the algorithm.  
+```{r, cache = T}
+controlRF <- trainControl(method="cv", 5)
+modelRF <- train(classe ~ ., data=trainData, method="rf", trControl=controlRF, ntree=250)
+modelRF
+```
+Now estimate the performance of the model on the ***validation/test*** data set.  
+```{r, cache = T}
+predictRF <- predict(modelRF, testData)
+confusionMatrix(testData$classe, predictRF)
+```
+```{r, cache = T}
+accuracy <- postResample(predictRF, testData$classe)
+accuracy
+outOfSampleError <- 1 - as.numeric(confusionMatrix(testData$classe, predictRF)$overall[1])
+outOfSampleError
+```
+The estimated accuracy of the model is ***99.30%*** and the estimated out-of-sample error is ***0.70%***.
+
+## Predicting for Test Data Set
+Remove the `problem_id` column first and apply the model to the original testing data set downloaded from the data source.
+```{r, cache = T}
+result <- predict(modelRF, testCleaned[, -length(names(testCleaned))])
+result
+```  
+## Save final preditions to files
+Define the function we’re given by the Coursera team, to write the predictions in separate files
+```{r, cache=T}
+answers <- result
+pml_write_files <- function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_results/problem_id_",i,".txt")
+    write.table(x[i], file=filename, quote=FALSE,
+                row.names=FALSE, col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
+
+## Appendix: Figures
+1. Decision Tree Visualization
+```{r, cache = T}
+treeModel <- rpart(classe ~ ., data=trainData, method="class")
+prp(treeModel) # fast plot
+```
+2. Correlation Matrix Visualization  
+```{r, cache = T}
+corrPlot <- cor(trainData[, -length(names(trainData))])
+corrplot(corrPlot, order="hclust", tl.col="black", tl.srt=45)
+
+```
