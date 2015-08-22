@@ -140,8 +140,7 @@ testCleaned &lt;- testCSVRaw[, sapply(testCSVRaw, is.numeric)]</code></pre>
 <div id="slice-the-data" class="section level3">
 <h3>Slice the data</h3>
 <p>The cleaned training data can be split into a pure <strong><em>training data set (70%)</em></strong> and a <strong><em>validation/test data set (30%)</em></strong>. The validation/training data set will be used to conduct cross validation in future steps.</p>
-<pre class="r"><code>##set.seed(22519) # For reproducibile purpose
-set.seed(082315) # For reproducibile purpose
+<pre class="r"><code>set.seed(082315) # For reproducibile purpose
 inTrain &lt;- createDataPartition(trainCleaned$classe, p=0.70, list=F)
 trainData &lt;- trainCleaned[inTrain, ]
 testData &lt;- trainCleaned[-inTrain, ]</code></pre>

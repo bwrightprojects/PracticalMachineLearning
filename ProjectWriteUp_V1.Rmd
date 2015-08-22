@@ -87,7 +87,6 @@ The **cleaned training data set** contains **19622 observations and 53 variables
 ### Slice the data
 The cleaned training data can be split into a pure ***training data set (70%)*** and a ***validation/test data set (30%)***. The validation/training data set will be used to conduct cross validation in future steps.  
 ```{r, cache = T}
-##set.seed(22519) # For reproducibile purpose
 set.seed(082315) # For reproducibile purpose
 inTrain <- createDataPartition(trainCleaned$classe, p=0.70, list=F)
 trainData <- trainCleaned[inTrain, ]
